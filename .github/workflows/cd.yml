@@ -19,11 +19,17 @@ jobs:
 
     steps:
 
+      # --------------------------------------------------
+      # 1. Checkout the exact commit that CI built
+      # --------------------------------------------------
       - name: Checkout CI commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
+      # --------------------------------------------------
+      # 2. Get Git SHA
+      # --------------------------------------------------
       - name: Get commit SHA
         id: git
         shell: powershell
@@ -31,41 +37,149 @@ jobs:
           $sha = git rev-parse --short HEAD
           "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
+      # --------------------------------------------------
+      # 3. Display deployment information
+      # --------------------------------------------------
       - name: Show deployment information
         shell: powershell
         run: |
-          Write-Host "Commit: ${{ steps.git.outputs.sha }}"
+          Write-Host "======================================"
+          Write-Host "Spring Boot CD"
+          Write-Host "======================================"
+
+          Write-Host "CI commit:"
+          Write-Host "${{ github.event.workflow_run.head_sha }}"
+
+          Write-Host "Checked out commit:"
+          git rev-parse HEAD
+
+          Write-Host "Short SHA:"
+          Write-Host "${{ steps.git.outputs.sha }}"
+
+          Write-Host "Podman version:"
           podman --version
 
-      - name: Login to GHCR
+      # --------------------------------------------------
+      # 4. Login to GHCR
+      # --------------------------------------------------
+      - name: Login to GitHub Container Registry
         shell: powershell
         run: |
-          $env:CR_PAT = "${{ secrets.GITHUB_TOKEN }}"
-          $env:CR_PAT | podman login ghcr.io `
-            --username "${{ github.actor }}" `
-            --password-stdin
+          "${{ secrets.GITHUB_TOKEN }}" |
+            podman login ghcr.io `
+              --username "${{ github.actor }}" `
+              --password-stdin
 
-      - name: Pull image from GHCR
+      # --------------------------------------------------
+      # 5. Pull image created by CI
+      # --------------------------------------------------
+      - name: Pull Docker image from GHCR
         shell: powershell
         run: |
-          podman pull "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+          $IMAGE = "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
 
+          Write-Host "Pulling:"
+          Write-Host $IMAGE
+
+          podman pull $IMAGE
+
+      # --------------------------------------------------
+      # 6. Stop existing application
+      # --------------------------------------------------
       - name: Stop old container
         shell: powershell
         run: |
           podman stop spring-boot-cicd-demo 2>$null
           podman rm spring-boot-cicd-demo 2>$null
+
           exit 0
 
-      - name: Deploy Spring Boot
+      # --------------------------------------------------
+      # 7. Deploy new container
+      # --------------------------------------------------
+      - name: Deploy Spring Boot application
         shell: powershell
         run: |
+          $IMAGE = "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+
+          Write-Host "Starting:"
+          Write-Host $IMAGE
+
           podman run -d `
             --name spring-boot-cicd-demo `
             -p 8081:8081 `
-            "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+            $IMAGE
 
+      # --------------------------------------------------
+      # 8. Wait for Spring Boot
+      # --------------------------------------------------
+      - name: Wait for application startup
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 10
+
+      # --------------------------------------------------
+      # 9. Show container
+      # --------------------------------------------------
       - name: Show running container
         shell: powershell
         run: |
           podman ps
+
+      # --------------------------------------------------
+      # 10. Show deployed image
+      # --------------------------------------------------
+      - name: Verify deployed image
+        shell: powershell
+        run: |
+          Write-Host "======================================"
+          Write-Host "Deployed image"
+          Write-Host "======================================"
+
+          podman inspect spring-boot-cicd-demo `
+            --format "{{.ImageName}}"
+
+      # --------------------------------------------------
+      # 11. Show application logs
+      # --------------------------------------------------
+      - name: Show application logs
+        shell: powershell
+        run: |
+          podman logs spring-boot-cicd-demo
+
+      # --------------------------------------------------
+      # 12. Health check / endpoint check
+      # --------------------------------------------------
+      - name: Test Spring Boot endpoint
+        shell: powershell
+        run: |
+          $url = "http://localhost:8081/api/v1/hello"
+
+          Write-Host "Testing:"
+          Write-Host $url
+
+          $response = Invoke-WebRequest `
+            -Uri $url `
+            -UseBasicParsing
+
+          Write-Host "HTTP Status:"
+          Write-Host $response.StatusCode
+
+          Write-Host "Response:"
+          Write-Host $response.Content
+
+          if ($response.StatusCode -ne 200) {
+            throw "Application endpoint check failed"
+          }
+
+      # --------------------------------------------------
+      # 13. Deployment successful
+      # --------------------------------------------------
+      - name: Deployment successful
+        shell: powershell
+        run: |
+          Write-Host "======================================"
+          Write-Host "DEPLOYMENT SUCCESSFUL"
+          Write-Host "======================================"
+          Write-Host "Application:"
+          Write-Host "http://localhost:8081/api/v1/hello"
