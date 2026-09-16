@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-
+      - develop
   pull_request:
     branches:
       - main
@@ -14,42 +14,49 @@ permissions:
   packages: write
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Checkout source code
+      # --------------------------------------------------
+      # 1. Checkout code
+      # --------------------------------------------------
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      # --------------------------------------------------
+      # 2. Set up JDK
+      # --------------------------------------------------
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: maven
 
-      - name: Make Maven wrapper executable
-        run: chmod +x mvnw
-
-      - name: Build and test
-        run: ./mvnw --batch-mode clean verify
-
-      - name: List target directory
-        run: ls -lah target
-
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: spring-boot-application
-          path: target/*.jar
-
-      - name: Get Git commit SHA
+      # --------------------------------------------------
+      # 3. Get Git SHA
+      # --------------------------------------------------
+      - name: Get commit SHA
         id: git
-        run: echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
+      # --------------------------------------------------
+      # 4. Build with Maven
+      # --------------------------------------------------
+      - name: Build with Maven
+        run: mvn clean package -DskipTests
+
+      # --------------------------------------------------
+      # 5. Run tests
+      # --------------------------------------------------
+      - name: Run tests
+        run: mvn test
+
+      # --------------------------------------------------
+      # 6. Login to GHCR
+      # --------------------------------------------------
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -57,11 +64,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image
-        run: docker build -t ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }} .
+      # --------------------------------------------------
+      # 7. Build and push Docker image
+      # --------------------------------------------------
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }},ghcr.io/${{ github.repository }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Show Docker image
-        run: docker images
-
-      - name: Push Docker image
-        run: docker push ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}
+      # --------------------------------------------------
+      # 8. Print image info
+      # --------------------------------------------------
+      - name: Print image info
+        run: |
+          echo "======================================"
+          echo "BUILD SUCCESSFUL"
+          echo "======================================"
+          echo "Image: ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+          echo "Latest: ghcr.io/${{ github.repository }}:latest"
