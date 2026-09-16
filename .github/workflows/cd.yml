@@ -15,7 +15,7 @@ jobs:
 
   deploy:
 
-    # Deploy ONLY when CI succeeded
+    # Deploy ONLY when CI succeeded.
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     runs-on: self-hosted
