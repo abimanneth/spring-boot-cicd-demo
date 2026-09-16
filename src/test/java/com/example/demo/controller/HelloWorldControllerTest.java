@@ -9,7 +9,7 @@ class HelloWorldControllerTest {
 	@Test
 	void testHello() {
 		String message = "My first CI pipeline implementation";
-		assertEquals("My first CI pipeline implementation",message);
+		assertEquals("My first CI pipeline implementationgit ",message);
 	}
 
 }
