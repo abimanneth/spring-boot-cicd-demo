@@ -31,11 +31,14 @@ jobs:
       - name: Build and test
         run: ./mvnw clean verify
 
-      - name: List Artifact
-        run: ls -lah target
-
-      - name: Upload JAR artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: spring boot application
-          path: target/*.jar
+	  - name: List Artifact
+	    run: ls -lah target
+	 
+	  - name: Upload JAR artifact
+	    uses: actions/upload-artifact@v4
+		with:
+			name: spring boot application
+			path: target/*.jar
+      
+      - name: Build Docker image
+	    run: docker build --no-cache -t spring-boot-cicd-demo:1.0.0
