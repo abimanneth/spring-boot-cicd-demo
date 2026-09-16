@@ -1,3 +1,4 @@
+```yaml
 name: Spring Boot CD
 
 on:
@@ -12,40 +13,53 @@ permissions:
   packages: write
 
 jobs:
+
   deploy:
+
+    # Deploy ONLY when CI succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     runs-on: self-hosted
 
     steps:
 
-      # --------------------------------------------------
-      # 1. Checkout the exact commit that CI built
-      # --------------------------------------------------
+      # ==========================================================
+      # 1. Checkout exact commit built by CI
+      # ==========================================================
       - name: Checkout CI commit
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      # --------------------------------------------------
-      # 2. Get Git SHA
-      # --------------------------------------------------
+      # ==========================================================
+      # 2. Get exact CI commit SHA
+      # ==========================================================
       - name: Get commit SHA
         id: git
         shell: powershell
         run: |
-          $sha = git rev-parse --short HEAD
-          "sha=$sha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $fullSha = "${{ github.event.workflow_run.head_sha }}"
+          $shortSha = $fullSha.Substring(0, 7)
 
-      # --------------------------------------------------
+          "sha=$shortSha" | Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Append
+
+          Write-Host "Full SHA : $fullSha"
+          Write-Host "Short SHA: $shortSha"
+
+      # ==========================================================
       # 3. Display deployment information
-      # --------------------------------------------------
+      # ==========================================================
       - name: Show deployment information
         shell: powershell
         run: |
           Write-Host "======================================"
-          Write-Host "Spring Boot CD"
+          Write-Host "SPRING BOOT CD"
           Write-Host "======================================"
+          Write-Host ""
+          Write-Host "CI workflow:"
+          Write-Host "${{ github.event.workflow_run.name }}"
           Write-Host ""
           Write-Host "CI commit:"
           Write-Host "${{ github.event.workflow_run.head_sha }}"
@@ -53,173 +67,217 @@ jobs:
           Write-Host "Checked out commit:"
           git rev-parse HEAD
           Write-Host ""
-          Write-Host "Short SHA:"
+          Write-Host "Image tag:"
           Write-Host "${{ steps.git.outputs.sha }}"
           Write-Host ""
-          Write-Host "Podman version:"
+          Write-Host "Podman:"
           podman --version
 
-      # --------------------------------------------------
+      # ==========================================================
       # 4. Login to GHCR
-      # --------------------------------------------------
+      # ==========================================================
       - name: Login to GitHub Container Registry
         shell: powershell
         run: |
           Write-Host "Logging in to GHCR..."
+
           "${{ secrets.GITHUB_TOKEN }}" |
             podman login ghcr.io `
               --username "${{ github.actor }}" `
               --password-stdin
-          Write-Host "Login successful"
 
-      # --------------------------------------------------
-      # 5. Pull image created by CI
-      # --------------------------------------------------
+          if ($LASTEXITCODE -ne 0) {
+            throw "GHCR login failed"
+          }
+
+          Write-Host "GHCR login successful"
+
+      # ==========================================================
+      # 5. Define image name
+      # ==========================================================
+      - name: Set image name
+        id: image
+        shell: powershell
+        run: |
+          $image = "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+
+          "name=$image" | Out-File `
+            -FilePath $env:GITHUB_OUTPUT `
+            -Append
+
+          Write-Host "Image:"
+          Write-Host $image
+
+      # ==========================================================
+      # 6. Pull image from GHCR
+      # ==========================================================
       - name: Pull Docker image from GHCR
         shell: powershell
         run: |
-          $IMAGE = "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+          $image = "${{ steps.image.outputs.name }}"
 
-          Write-Host "Pulling image:"
-          Write-Host $IMAGE
-          Write-Host ""
+          Write-Host "Pulling:"
+          Write-Host $image
 
-          podman pull $IMAGE
+          podman pull $image
 
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to pull image"
           }
 
-      # --------------------------------------------------
-      # 6. Stop existing application
-      # --------------------------------------------------
+          Write-Host "Image pulled successfully"
+
+      # ==========================================================
+      # 7. Stop old container
+      # ==========================================================
       - name: Stop old container
         shell: powershell
         run: |
-          Write-Host "Stopping old container if exists..."
+          Write-Host "Stopping old container..."
+
           podman stop spring-boot-cicd-demo 2>$null
           podman rm spring-boot-cicd-demo 2>$null
-          Write-Host "Old container stopped/removed"
 
-      # --------------------------------------------------
-      # 7. Deploy new container
-      # --------------------------------------------------
+          Write-Host "Old container removed"
+
+      # ==========================================================
+      # 8. Deploy new container
+      # ==========================================================
       - name: Deploy Spring Boot application
         shell: powershell
         run: |
-          $IMAGE = "ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
+          $image = "${{ steps.image.outputs.name }}"
 
-          Write-Host "Starting new container..."
-          Write-Host $IMAGE
-          Write-Host ""
+          Write-Host "Starting container:"
+          Write-Host $image
 
           podman run -d `
             --name spring-boot-cicd-demo `
             -p 8081:8081 `
-            $IMAGE
+            $image
 
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to start container"
           }
 
-          Write-Host "Container started successfully"
+          Write-Host "Container started"
 
-      # --------------------------------------------------
-      # 8. Wait for Spring Boot
-      # --------------------------------------------------
+      # ==========================================================
+      # 9. Wait for application
+      # ==========================================================
       - name: Wait for application startup
         shell: powershell
         run: |
-          Write-Host "Waiting 15 seconds for Spring Boot to start..."
-          Start-Sleep -Seconds 15
-          Write-Host "Wait complete"
+          Write-Host "Waiting for Spring Boot..."
 
-      # --------------------------------------------------
-      # 9. Show running containers
-      # --------------------------------------------------
+          Start-Sleep -Seconds 15
+
+      # ==========================================================
+      # 10. Show container
+      # ==========================================================
       - name: Show running container
         shell: powershell
         run: |
           Write-Host "======================================"
-          Write-Host "Running Containers"
+          Write-Host "RUNNING CONTAINER"
           Write-Host "======================================"
+
           podman ps
 
-      # --------------------------------------------------
-      # 10. Verify deployed image
-      # --------------------------------------------------
+      # ==========================================================
+      # 11. Verify image
+      # ==========================================================
       - name: Verify deployed image
         shell: powershell
         run: |
           Write-Host "======================================"
-          Write-Host "Deployed Image Details"
+          Write-Host "DEPLOYED IMAGE"
           Write-Host "======================================"
 
           podman inspect spring-boot-cicd-demo `
             --format "{{.ImageName}}"
 
-      # --------------------------------------------------
-      # 11. Show application logs
-      # --------------------------------------------------
+      # ==========================================================
+      # 12. Show logs
+      # ==========================================================
       - name: Show application logs
         shell: powershell
         run: |
           Write-Host "======================================"
-          Write-Host "Application Logs"
+          Write-Host "APPLICATION LOGS"
           Write-Host "======================================"
+
           podman logs spring-boot-cicd-demo
 
-      # --------------------------------------------------
-      # 12. Health check / endpoint check
-      # --------------------------------------------------
+      # ==========================================================
+      # 13. Health check
+      # ==========================================================
       - name: Test Spring Boot endpoint
         shell: powershell
         run: |
+
           $url = "http://localhost:8081/api/v1/hello"
-          $maxAttempts = 5
+
+          $maxAttempts = 10
           $attempt = 0
 
-          Write-Host "Testing endpoint: $url"
-          Write-Host ""
+          Write-Host "Testing:"
+          Write-Host $url
 
           while ($attempt -lt $maxAttempts) {
+
             try {
+
               $response = Invoke-WebRequest `
                 -Uri $url `
                 -UseBasicParsing `
                 -ErrorAction Stop
 
+              Write-Host ""
               Write-Host "HTTP Status: $($response.StatusCode)"
               Write-Host "Response: $($response.Content)"
-              Write-Host ""
 
               if ($response.StatusCode -eq 200) {
-                Write-Host "Endpoint test PASSED"
+                Write-Host ""
+                Write-Host "HEALTH CHECK PASSED"
                 exit 0
               }
+
             }
             catch {
+
               $attempt++
+
+              Write-Host ""
+              Write-Host "Attempt $attempt failed"
+
               if ($attempt -lt $maxAttempts) {
-                Write-Host "Attempt $attempt failed, retrying in 3 seconds..."
+                Write-Host "Retrying in 3 seconds..."
                 Start-Sleep -Seconds 3
               }
             }
           }
 
-          throw "Application endpoint check failed after $maxAttempts attempts"
+          throw "Application health check failed"
 
-      # --------------------------------------------------
-      # 13. Deployment successful
-      # --------------------------------------------------
+      # ==========================================================
+      # 14. Deployment successful
+      # ==========================================================
       - name: Deployment successful
         shell: powershell
         run: |
+          Write-Host ""
           Write-Host "======================================"
           Write-Host "DEPLOYMENT SUCCESSFUL"
           Write-Host "======================================"
           Write-Host ""
-          Write-Host "Application URL:"
+          Write-Host "Image:"
+          Write-Host "${{ steps.image.outputs.name }}"
+          Write-Host ""
+          Write-Host "Application:"
           Write-Host "http://localhost:8081/api/v1/hello"
           Write-Host ""
-          Write-Host "Short SHA: ${{ steps.git.outputs.sha }}"
+          Write-Host "CI SHA:"
+          Write-Host "${{ github.event.workflow_run.head_sha }}"
+          Write-Host ""
+```
