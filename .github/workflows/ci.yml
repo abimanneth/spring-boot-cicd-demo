@@ -1,44 +1,34 @@
+---
 name: Spring Boot CI
-
 on:
   push:
     branches:
       - main
-
   pull_request:
     branches:
       - main
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-
       - name: Checkout source code
         uses: actions/checkout@v4
-
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          java-version: "21"
+          distribution: temurin
           cache: maven
-
       - name: Make Maven wrapper executable
         run: chmod +x mvnw
-
       - name: Build and test
         run: ./mvnw clean verify
-
-	  - name: List Artifact
-	    run: ls -lah target
-	 
-	  - name: Upload JAR artifact
-	    uses: actions/upload-artifact@v4
-		with:
-			name: spring boot application
-			path: target/*.jar
-      
+      - name: List Artifact
+        run: ls -lah target
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spring boot application
+          path: target/*.jar
       - name: Build Docker image
-	    run: docker build --no-cache -t spring-boot-cicd-demo:1.0.0
+        run: docker build --no-cache -t spring-boot-cicd-demo:1.0.0
