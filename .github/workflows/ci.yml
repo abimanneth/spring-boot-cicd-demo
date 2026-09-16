@@ -1,4 +1,4 @@
-```yaml
+---
 name: Spring Boot CI/CD
 
 on:
@@ -129,4 +129,4 @@ jobs:
           echo "Image      : ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}"
           echo "Latest     : ghcr.io/${{ github.repository }}:latest"
           echo "=========================================="
-```
+
