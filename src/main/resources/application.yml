@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: spring-boot-ci-0
+server:
+  port: 8081
