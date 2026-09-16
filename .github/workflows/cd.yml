@@ -1,4 +1,3 @@
-```yaml
 name: Spring Boot CD
 
 on:
@@ -280,4 +279,4 @@ jobs:
           Write-Host "CI SHA:"
           Write-Host "${{ github.event.workflow_run.head_sha }}"
           Write-Host ""
-```
+
