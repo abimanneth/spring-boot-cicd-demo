@@ -1,0 +1,64 @@
+name: Spring Boot CD
+
+on:
+  workflow_run:
+    workflows:
+      - Spring Boot CI
+    types:
+      - completed
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+
+  deploy:
+
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout latest main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Get latest commit SHA
+        id: git
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Show deployment version
+        run: |
+          echo "Deploying commit: ${{ steps.git.outputs.sha }}"
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker image
+        run: |
+          docker pull \
+            ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}
+
+      - name: Show Docker image
+        run: docker images
+
+      - name: Deploy application
+        run: |
+          docker stop spring-boot-app || true
+          docker rm spring-boot-app || true
+
+          docker run -d \
+            --name spring-boot-app \
+            -p 8080:8080 \
+            ghcr.io/${{ github.repository }}:${{ steps.git.outputs.sha }}
+
+      - name: Check deployment
+        run: docker ps
