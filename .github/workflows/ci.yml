@@ -31,4 +31,4 @@ jobs:
           name: spring boot application
           path: target/*.jar
       - name: Build Docker image
-        run: docker build --no-cache -t spring-boot-cicd-demo:1.0.0
+        run: docker build --no-cache -t spring-boot-cicd-demo:1.0.0 .
